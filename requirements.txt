@@ -1,0 +1,7 @@
+discord.py>=2.4
+aiohttp>=3.9
+python-dotenv>=1.0
+beautifulsoup4>=4.12
+# discord.py imports the stdlib `audioop` module, which was removed in Python 3.13.
+# This backport restores it (we don't use voice, but the import still runs).
+audioop-lts>=0.2; python_version >= "3.13"
