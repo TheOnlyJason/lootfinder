@@ -7,6 +7,7 @@ a product URL, ...) and returns a :class:`PriceResult`. Register new sources in
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -80,6 +81,8 @@ async def fetch_bestbuy(identifier: str) -> PriceResult:
                     return PriceResult(ok=False, error=f"SKU {sku} not found")
                 resp.raise_for_status()
                 data = await resp.json()
+    except asyncio.TimeoutError:
+        return PriceResult(ok=False, error="Best Buy API request timed out")
     except aiohttp.ClientError as exc:
         return PriceResult(ok=False, error=f"Network error: {exc}")
 
@@ -116,6 +119,8 @@ async def fetch_url(identifier: str) -> PriceResult:
                     return PriceResult(ok=False, url=url, error="Site blocked the request (403)")
                 resp.raise_for_status()
                 html = await resp.text()
+    except asyncio.TimeoutError:
+        return PriceResult(ok=False, url=url, error="Request timed out (site slow or blocking automated requests)")
     except aiohttp.ClientError as exc:
         return PriceResult(ok=False, url=url, error=f"Network error: {exc}")
     return parse_product_html(html, url)
