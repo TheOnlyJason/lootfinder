@@ -6,12 +6,14 @@ Covers the two parts that are easy to get subtly wrong: HTML price parsing and
 the new-low / target-crossing de-dupe logic.
 """
 
+import asyncio
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import alerts  # noqa: E402
+import check_once  # noqa: E402
 import sources  # noqa: E402
 
 JSONLD_PAGE = """
@@ -103,6 +105,53 @@ def test_seeded_below_target_alerts_next_check():
     item = {"target_price": 450.0, "lowest_price": 400.0, "last_price": 400.0, "alerted_target": False}
     assert alerts.evaluate(item, 400.0) == ["target"]
     assert alerts.evaluate(item, 400.0) == []
+
+
+def test_check_once_seeds_then_alerts_on_drop():
+    price = {"v": 999.0}
+
+    async def stub(identifier):
+        return sources.PriceResult(ok=True, price=price["v"], currency="USD", title="T", url=identifier)
+
+    sources.SOURCES["stub"] = stub
+    try:
+        watches = [{"source": "stub", "identifier": "x", "label": "X", "target_price": 899}]
+        state = {}
+        posts = []
+
+        async def post(w, result, item, reasons):
+            posts.append((result.price, list(reasons)))
+
+        # First run seeds at 999 (above target) -> no alert.
+        assert asyncio.run(check_once.run(watches, state, post)) == 0
+        assert posts == [] and state["stub:x"]["lowest_price"] == 999.0
+
+        # Drop to a new low -> alert.
+        price["v"] = 950.0
+        assert asyncio.run(check_once.run(watches, state, post)) == 1
+        assert posts[-1] == (950.0, ["low"])
+
+        # Drop onto the target -> target + low.
+        price["v"] = 899.0
+        asyncio.run(check_once.run(watches, state, post))
+        assert posts[-1] == (899.0, ["target", "low"])
+
+        # Same price again -> quiet (de-duped).
+        before = len(posts)
+        asyncio.run(check_once.run(watches, state, post))
+        assert len(posts) == before
+    finally:
+        sources.SOURCES.pop("stub", None)
+
+
+def test_check_once_prunes_removed_watches():
+    state = {"url:gone": {"last_price": 1, "lowest_price": 1, "alerted_target": False}}
+
+    async def post(*_args):
+        pass
+
+    asyncio.run(check_once.run([], state, post))
+    assert state == {}
 
 
 def _run_all():

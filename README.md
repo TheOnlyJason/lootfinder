@@ -79,29 +79,42 @@ drops to a new low (or first crosses your target).
 
 ## Making it truly autonomous (hosting)
 
-Because the bot is interactive (it listens for slash commands) and runs a
-background loop, it needs to stay running. Options, cheapest first:
+There are two ways to run PriceWatch. Pick one:
 
-- **Your Mac or a Raspberry Pi, always on.** Run it under `launchd` (macOS) or
-  `systemd` (Linux) so it restarts on boot/crash. Simplest if you've got a
-  machine that's on anyway.
-- **A small cloud host:** Railway, Render (Background Worker), or Fly.io. Push
-  the repo, set the env vars in their dashboard, done. Free/cheap tiers are
-  plenty for one bot.
-- **Cheap VPS** (e.g. a $5 droplet) with `systemd` + the venv.
+### Mode A — Free, no server (GitHub Actions + webhook) ✅ recommended
 
-### Alternative: no always-on server (webhook + cron)
+Zero cost, nothing on your laptop, no card required. A scheduled GitHub Action
+runs [`check_once.py`](check_once.py) hourly in GitHub's cloud, posts price drops
+to a Discord **webhook**, and commits the de-dupe state back to the repo. You
+manage the product list in [`watches.json`](watches.json) (no slash commands).
 
-If you only want notifications and don't care about slash commands, you can skip
-the persistent bot entirely:
+1. **Make a webhook:** in Discord, target channel → Edit Channel → Integrations →
+   Webhooks → New Webhook → Copy Webhook URL.
+2. **Add it as a repo secret:** GitHub repo → Settings → Secrets and variables →
+   Actions → New repository secret → name `DISCORD_WEBHOOK_URL`, paste the URL.
+3. **Edit [`watches.json`](watches.json)** to list what you want tracked (see its
+   format below), commit, and push.
+4. Done. The [workflow](.github/workflows/pricewatch.yml) runs hourly; trigger it
+   immediately from the repo's **Actions** tab → PriceWatch → **Run workflow**.
 
-- Use a Discord incoming webhook (Channel Settings → Integrations → Webhooks).
-- Write a small script that checks prices once and POSTs to the webhook URL.
-- Schedule it hourly with GitHub Actions (a `schedule:` cron workflow, free) or
-  plain `cron`. State (last prices) can live in the repo or a tiny gist.
+`watches.json` is a list of items; omit `target_price` to alert on any decrease:
 
-This is the lowest-maintenance setup; you lose the in-Discord `/watch` UX and
-manage the product list in a file instead.
+```json
+[
+  { "source": "url", "identifier": "https://store.example/mac", "label": "Mac mini", "target_price": 899 }
+]
+```
+
+### Mode B — Always-on bot (slash commands)
+
+Runs [`bot.py`](bot.py) as a persistent process, so `/watch` and friends work.
+It needs to stay running:
+
+- **Your Mac, always on** under `launchd` — see [deploy/README.md](deploy/README.md).
+- **A small cloud host** (Railway / Render Background Worker / Fly.io). These run
+  a persistent worker; mount a volume and point `WATCHLIST_PATH` at it so the
+  watchlist survives restarts. Cheap (~$2–5/mo), not free.
+- **A free cloud VM** (Oracle Cloud / GCP always-free tier) with `systemd`.
 
 ## Extending it
 
@@ -116,7 +129,10 @@ types beyond Macs, nothing special is needed — just `/watch` any SKU or URL.
 | [`bot.py`](bot.py)            | Discord client, slash commands, the hourly check loop   |
 | [`sources.py`](sources.py)    | Price sources (`bestbuy`, `url`) + the `resolve()` registry |
 | [`alerts.py`](alerts.py)      | New-low / target-crossing de-dupe logic                 |
-| [`storage.py`](storage.py)    | Atomic `watchlist.json` read/write                      |
+| [`storage.py`](storage.py)    | Atomic `watchlist.json` read/write (Mode B)             |
+| [`check_once.py`](check_once.py) | Serverless one-shot check → Discord webhook (Mode A)  |
+| [`watches.json`](watches.json) | Product list for Mode A (you edit this)                |
+| [`.github/workflows/pricewatch.yml`](.github/workflows/pricewatch.yml) | Hourly cron that runs Mode A |
 | [`check_url.py`](check_url.py) | CLI to test whether the scraper can read a price from a URL |
 | [`tests/test_offline.py`](tests/test_offline.py) | Offline checks for parsing + alert logic (no token needed) |
 
