@@ -117,13 +117,19 @@ types beyond Macs, nothing special is needed — just `/watch` any SKU or URL.
 | [`sources.py`](sources.py)    | Price sources (`bestbuy`, `url`) + the `resolve()` registry |
 | [`alerts.py`](alerts.py)      | New-low / target-crossing de-dupe logic                 |
 | [`storage.py`](storage.py)    | Atomic `watchlist.json` read/write                      |
+| [`check_url.py`](check_url.py) | CLI to test whether the scraper can read a price from a URL |
 | [`tests/test_offline.py`](tests/test_offline.py) | Offline checks for parsing + alert logic (no token needed) |
 
 ## Notes & caveats
 
 - Respect each site's Terms of Service and `robots.txt`. Keep the interval
   reasonable (hourly is fine; don't hammer pages every minute).
-- The generic scraper depends on sites exposing structured data; some won't, and
-  some will block automated requests regardless of user agent.
+- The generic scraper depends on sites exposing structured data and not blocking
+  bots. **Whether a retailer works depends on your IP**, so test from the machine
+  that will run the bot: `python check_url.py <product-url>`. Observed for Macs:
+  **B&H works** (clean JSON-LD), **Micro Center** loads but renders its price in
+  JavaScript (nothing to scrape), **Best Buy / Apple** block automated requests
+  (use the official Best Buy API for those). Smaller / Shopify-based stores tend
+  to work best.
 - This stores your watchlist in a local `watchlist.json`. Back it up if it
   matters to you.

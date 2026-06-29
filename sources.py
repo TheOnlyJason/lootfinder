@@ -23,6 +23,18 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
+# A fuller, browser-like header set. Helps with sites that do basic header
+# checks; it will NOT defeat serious bot protection (Akamai/PerimeterX), which
+# big retailers use — those tend to block by IP reputation regardless.
+BROWSER_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Upgrade-Insecure-Requests": "1",
+}
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
 
 
@@ -111,10 +123,7 @@ async def fetch_url(identifier: str) -> PriceResult:
         return PriceResult(ok=False, error=f"Not a valid URL: {identifier!r}")
     try:
         async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
-            async with session.get(
-                url,
-                headers={"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"},
-            ) as resp:
+            async with session.get(url, headers=BROWSER_HEADERS) as resp:
                 if resp.status == 403:
                     return PriceResult(ok=False, url=url, error="Site blocked the request (403)")
                 resp.raise_for_status()
