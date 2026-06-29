@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pricewatch.bot</string>
+
+    <!-- Run the bot using the virtualenv's Python so deps resolve. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jasondai/lootfinder/.venv/bin/python</string>
+        <string>/Users/jasondai/lootfinder/bot.py</string>
+    </array>
+
+    <!-- bot.py loads .env relative to here. -->
+    <key>WorkingDirectory</key>
+    <string>/Users/jasondai/lootfinder</string>
+
+    <!-- Start at login and keep it alive (restart on crash). -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <!-- Wait 30s between restarts so a misconfig doesn't hot-loop. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Logs (and any startup errors) land here. -->
+    <key>StandardOutPath</key>
+    <string>/Users/jasondai/lootfinder/pricewatch.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jasondai/lootfinder/pricewatch.log</string>
+</dict>
+</plist>

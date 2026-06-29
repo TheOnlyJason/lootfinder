@@ -41,6 +41,9 @@ def _int_env(name: str) -> int:
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 CHANNEL_ID = _int_env("DISCORD_CHANNEL_ID")
+# Optional: set your server (guild) ID to register slash commands instantly.
+# Without it, commands sync globally and can take up to an hour to appear.
+GUILD_ID = _int_env("DISCORD_GUILD_ID")
 CHECK_INTERVAL_HOURS = float(os.getenv("CHECK_INTERVAL_HOURS") or 1)
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
@@ -165,8 +168,14 @@ async def _before_price_loop() -> None:
 @bot.event
 async def on_ready() -> None:
     try:
-        synced = await tree.sync()
-        log.info("Synced %d slash command(s)", len(synced))
+        if GUILD_ID:
+            guild = discord.Object(id=GUILD_ID)
+            tree.copy_global_to(guild=guild)
+            synced = await tree.sync(guild=guild)
+            log.info("Synced %d command(s) to guild %s (appear immediately)", len(synced), GUILD_ID)
+        else:
+            synced = await tree.sync()
+            log.info("Synced %d global command(s) (can take up to 1h to appear)", len(synced))
     except Exception:  # noqa: BLE001
         log.exception("Failed to sync slash commands")
     if not price_loop.is_running():

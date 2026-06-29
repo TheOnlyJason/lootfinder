@@ -2,6 +2,7 @@
 .env
 watchlist.json
 *.tmp
+*.log
 
 # Python
 .venv/
