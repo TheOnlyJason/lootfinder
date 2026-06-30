@@ -10,5 +10,17 @@
     "identifier": "https://www.bhphotovideo.com/c/product/1884036-REG/apple_mu963ll_a_mac_studio_with_m4.html",
     "label": "Mac Studio M4 Max (36GB/512GB) — B&H",
     "target_price": 2299
+  },
+  {
+    "source": "url",
+    "identifier": "https://www.bhphotovideo.com/c/product/1490985-REG/canon_3637c001_powershot_g7_x_mark.html",
+    "label": "Canon PowerShot G7 X Mark III (Black) — B&H",
+    "target_price": 799
+  },
+  {
+    "source": "url",
+    "identifier": "https://www.bhphotovideo.com/c/product/1859258-REG/apple_mu9d3ll_a_mac_mini_m4_10c_10cgpu_16gb_256gb.html",
+    "label": "Mac mini M4 (16GB/256GB, base) — B&H",
+    "target_price": 549
   }
 ]

@@ -37,6 +37,11 @@ BROWSER_HEADERS = {
 }
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
 
+# Retry transient blocks/timeouts — big retailers intermittently 403 automated
+# requests even from a residential IP, especially under a burst of requests.
+MAX_FETCH_ATTEMPTS = 3
+RETRY_BACKOFF = (3, 6)  # seconds to wait before the 2nd and 3rd attempts
+
 
 @dataclass
 class PriceResult:
@@ -117,22 +122,33 @@ async def fetch_bestbuy(identifier: str) -> PriceResult:
 
 
 async def fetch_url(identifier: str) -> PriceResult:
-    """Scrape a generic product page for structured price data."""
+    """Scrape a generic product page for structured price data.
+
+    Retries on a 403 / timeout: big retailers intermittently block automated
+    requests even from a residential IP, and a short wait usually clears it.
+    """
     url = identifier.strip()
     if not url.startswith(("http://", "https://")):
         return PriceResult(ok=False, error=f"Not a valid URL: {identifier!r}")
-    try:
-        async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
-            async with session.get(url, headers=BROWSER_HEADERS) as resp:
-                if resp.status == 403:
-                    return PriceResult(ok=False, url=url, error="Site blocked the request (403)")
-                resp.raise_for_status()
-                html = await resp.text()
-    except asyncio.TimeoutError:
-        return PriceResult(ok=False, url=url, error="Request timed out (site slow or blocking automated requests)")
-    except aiohttp.ClientError as exc:
-        return PriceResult(ok=False, url=url, error=f"Network error: {exc}")
-    return parse_product_html(html, url)
+
+    last = PriceResult(ok=False, url=url, error="request failed")
+    async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
+        for attempt in range(MAX_FETCH_ATTEMPTS):
+            if attempt:
+                await asyncio.sleep(RETRY_BACKOFF[min(attempt - 1, len(RETRY_BACKOFF) - 1)])
+            try:
+                async with session.get(url, headers=BROWSER_HEADERS) as resp:
+                    if resp.status == 403:
+                        last = PriceResult(ok=False, url=url, error="Site blocked the request (403)")
+                        continue  # transient — retry after a pause
+                    resp.raise_for_status()
+                    html = await resp.text()
+                return parse_product_html(html, url)
+            except asyncio.TimeoutError:
+                last = PriceResult(ok=False, url=url, error="Request timed out")
+            except aiohttp.ClientError as exc:
+                last = PriceResult(ok=False, url=url, error=f"Network error: {exc}")
+    return last
 
 
 def parse_product_html(html: str, url: str) -> PriceResult:

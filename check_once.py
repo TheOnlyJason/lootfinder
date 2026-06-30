@@ -37,6 +37,10 @@ WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 # instead of staying silent until something drops.
 ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "").strip().lower() in ("1", "true", "yes", "on")
 
+# Seconds to pause between item fetches, so we don't burst a retailer into
+# rate-limiting / 403s. Bump it if you watch many items at one store.
+INTER_ITEM_DELAY = float(os.getenv("INTER_ITEM_DELAY", "1.5"))
+
 _CURRENCY_SYMBOLS = {"USD": "$", "GBP": "£", "EUR": "€", "CAD": "C$", "AUD": "A$"}
 _GREEN = 0x2ECC71
 _BLURPLE = 0x5865F2
@@ -123,7 +127,9 @@ async def run(watches: list[dict], state: dict, post_alert) -> list:
     (``reasons`` is empty when there's no drop / the price couldn't be read).
     """
     outcomes = []
-    for watch in watches:
+    for index, watch in enumerate(watches):
+        if index:
+            await asyncio.sleep(INTER_ITEM_DELAY)
         fetch = sources.resolve(watch.get("source", ""))
         if fetch is None:
             result = sources.PriceResult(ok=False, error=f"unknown source {watch.get('source')!r}")
