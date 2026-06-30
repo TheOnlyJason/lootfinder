@@ -123,12 +123,12 @@ def test_check_once_seeds_then_alerts_on_drop():
             posts.append((result.price, list(reasons)))
 
         # First run seeds at 999 (above target) -> no alert.
-        assert asyncio.run(check_once.run(watches, state, post)) == 0
-        assert posts == [] and state["stub:x"]["lowest_price"] == 999.0
+        outcomes = asyncio.run(check_once.run(watches, state, post))
+        assert len(outcomes) == 1 and posts == [] and state["stub:x"]["lowest_price"] == 999.0
 
         # Drop to a new low -> alert.
         price["v"] = 950.0
-        assert asyncio.run(check_once.run(watches, state, post)) == 1
+        asyncio.run(check_once.run(watches, state, post))
         assert posts[-1] == (950.0, ["low"])
 
         # Drop onto the target -> target + low.
@@ -152,6 +152,19 @@ def test_check_once_prunes_removed_watches():
 
     asyncio.run(check_once.run([], state, post))
     assert state == {}
+
+
+def test_summary_payload_lists_all_items():
+    R = sources.PriceResult
+    outcomes = [
+        ({"label": "A"}, R(ok=True, price=999.0, currency="USD"), []),
+        ({"label": "B"}, R(ok=True, price=950.0, currency="USD"), ["low"]),
+        ({"label": "C"}, R(ok=False, error="blocked"), []),
+    ]
+    desc = check_once.build_summary_payload(outcomes)["embeds"][0]["description"]
+    assert "A" in desc and "$999.00" in desc      # normal item listed
+    assert "📉" in desc                            # B flagged as a drop
+    assert "blocked" in desc                       # C shows its error
 
 
 def _run_all():

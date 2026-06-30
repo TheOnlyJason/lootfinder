@@ -107,6 +107,9 @@ Option A.
    ```
 3. **Schedule it** with the `launchd` agent in `deploy/`.
 
+Set `ALWAYS_NOTIFY=true` in `.env` to get a summary of all current prices on
+every run (a heartbeat), instead of only pinging when something drops.
+
 (The same script runs on GitHub Actions cron too — fine for an `api` source or
 stores that don't block cloud IPs, but B&H-style retailers will `403` there.)
 

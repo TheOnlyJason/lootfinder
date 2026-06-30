@@ -33,8 +33,13 @@ WATCHES_PATH = os.getenv("WATCHES_PATH", "watches.json")
 STATE_PATH = os.getenv("STATE_PATH", "state.json")
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
+# When truthy, post a summary of ALL current prices every run (a heartbeat),
+# instead of staying silent until something drops.
+ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "").strip().lower() in ("1", "true", "yes", "on")
+
 _CURRENCY_SYMBOLS = {"USD": "$", "GBP": "£", "EUR": "€", "CAD": "C$", "AUD": "A$"}
 _GREEN = 0x2ECC71
+_BLURPLE = 0x5865F2
 
 
 def _key(watch: dict) -> str:
@@ -88,25 +93,53 @@ def build_payload(watch: dict, result: "sources.PriceResult", item: dict, reason
     return {"embeds": [embed]}
 
 
-async def run(watches: list[dict], state: dict, post_alert) -> int:
+def build_summary_payload(outcomes: list) -> dict:
+    """Build one Discord embed summarizing the current price of every item.
+
+    ``outcomes`` is the list returned by :func:`run`. Items that dropped this
+    run are flagged with 📉; items that couldn't be read show their error.
+    """
+    lines = []
+    for watch, result, reasons in outcomes:
+        label = watch.get("label", "item")
+        if result.ok and result.price is not None:
+            tag = " 📉" if reasons else ""
+            lines.append(f"**{label}** — {_fmt(result.price, result.currency)}{tag}")
+        else:
+            lines.append(f"**{label}** — ⚠️ {result.error}")
+    embed = {
+        "title": "🛰️ PriceWatch check",
+        "description": "\n".join(lines) if lines else "No items configured.",
+        "color": _BLURPLE,
+    }
+    return {"embeds": [embed]}
+
+
+async def run(watches: list[dict], state: dict, post_alert) -> list:
     """Core loop (no file/network I/O of its own — easy to test).
 
     Mutates ``state`` in place and awaits ``post_alert(watch, result, item, reasons)``
-    for each drop. Returns the number of alerts posted.
+    for each drop. Returns a list of ``(watch, result, reasons)`` for every item
+    (``reasons`` is empty when there's no drop / the price couldn't be read).
     """
-    posted = 0
+    outcomes = []
     for watch in watches:
         fetch = sources.resolve(watch.get("source", ""))
         if fetch is None:
-            print(f"skip: unknown source {watch.get('source')!r} for {watch.get('label')!r}")
+            result = sources.PriceResult(ok=False, error=f"unknown source {watch.get('source')!r}")
+            print(f"skip: {result.error} for {watch.get('label')!r}")
+            outcomes.append((watch, result, []))
             continue
         try:
             result = await fetch(watch["identifier"])
         except Exception as exc:  # noqa: BLE001
+            result = sources.PriceResult(ok=False, error=str(exc))
             print(f"error: {watch.get('label')!r}: {exc}")
+            outcomes.append((watch, result, []))
             continue
         if not result.ok or result.price is None:
             print(f"no price: {watch.get('label')!r} - {result.error}")
+            outcomes.append((watch, result, []))
             continue
 
         key = _key(watch)
@@ -120,15 +153,15 @@ async def run(watches: list[dict], state: dict, post_alert) -> int:
         }
         flag = f"  -> ALERT ({', '.join(reasons)})" if reasons else ""
         print(f"{watch.get('label')!r}: {_fmt(result.price, result.currency)}{flag}")
+        outcomes.append((watch, result, reasons))
         if reasons:
             await post_alert(watch, result, item, reasons)
-            posted += 1
 
     # Drop state for watches that were removed from watches.json.
     valid = {_key(w) for w in watches}
     for key in [k for k in state if k not in valid]:
         del state[key]
-    return posted
+    return outcomes
 
 
 async def main() -> int:
@@ -142,16 +175,25 @@ async def main() -> int:
     state = _load_json(STATE_PATH, {})
 
     async with aiohttp.ClientSession(timeout=sources.REQUEST_TIMEOUT) as session:
-        async def post_alert(watch, result, item, reasons):
-            payload = build_payload(watch, result, item, reasons)
+        async def post(payload):
             async with session.post(WEBHOOK_URL, json=payload) as resp:
                 if resp.status >= 400:
                     print(f"webhook POST failed ({resp.status}): {await resp.text()}", file=sys.stderr)
 
-        posted = await run(watches, state, post_alert)
+        # In always-notify mode the per-run summary covers everything, so we
+        # suppress the individual drop pings (the summary flags drops with 📉).
+        async def on_drop(watch, result, item, reasons):
+            if not ALWAYS_NOTIFY:
+                await post(build_payload(watch, result, item, reasons))
+
+        outcomes = await run(watches, state, on_drop)
+        if ALWAYS_NOTIFY:
+            await post(build_summary_payload(outcomes))
 
     _save_json(STATE_PATH, state)
-    print(f"Done — checked {len(watches)} item(s), posted {posted} alert(s).")
+    drops = sum(1 for _, _, reasons in outcomes if reasons)
+    summary = " + summary" if ALWAYS_NOTIFY else ""
+    print(f"Done — checked {len(watches)} item(s), {drops} drop(s){summary}.")
     return 0
 
 
