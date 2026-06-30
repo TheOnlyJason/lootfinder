@@ -20,9 +20,14 @@ import os
 import sys
 
 import aiohttp
+from dotenv import load_dotenv
 
 import alerts
 import sources
+
+# Local runs read DISCORD_WEBHOOK_URL from .env; in GitHub Actions it comes from
+# the environment, and load_dotenv() is a harmless no-op when there's no .env.
+load_dotenv()
 
 WATCHES_PATH = os.getenv("WATCHES_PATH", "watches.json")
 STATE_PATH = os.getenv("STATE_PATH", "state.json")

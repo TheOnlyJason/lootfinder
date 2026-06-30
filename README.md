@@ -79,42 +79,43 @@ drops to a new low (or first crosses your target).
 
 ## Making it truly autonomous (hosting)
 
+> **Heads-up on cloud hosting + scraping.** Big retailers (B&H, Best Buy, Apple,
+> Micro Center, ...) block automated requests from datacenter IPs — so the `url`
+> scraper returns `403` from GitHub Actions and most free cloud VMs. Scraping
+> those sites reliably needs a **residential IP** (your own machine). Cloud
+> hosting only works reliably with an **official API** source (e.g. `bestbuy`),
+> which isn't IP-blocked.
+
 There are two ways to run PriceWatch. Pick one:
 
-### Mode A — Free, no server (GitHub Actions + webhook) ✅ recommended
+### Mode A — Scheduled checker + webhook (free, recommended for scraping)
 
-Zero cost, nothing on your laptop, no card required. A scheduled GitHub Action
-runs [`check_once.py`](check_once.py) hourly in GitHub's cloud, posts price drops
-to a Discord **webhook**, and commits the de-dupe state back to the repo. You
-manage the product list in [`watches.json`](watches.json) (no slash commands).
+Runs [`check_once.py`](check_once.py) on a schedule, posts price drops to a
+Discord **webhook**, no bot token needed. You manage products in
+[`watches.json`](watches.json). Run it **on your Mac** (residential IP, so the
+scraper isn't blocked) via `launchd` — see [deploy/README.md](deploy/README.md),
+Option A.
 
-1. **Make a webhook:** in Discord, target channel → Edit Channel → Integrations →
-   Webhooks → New Webhook → Copy Webhook URL.
-2. **Add it as a repo secret:** GitHub repo → Settings → Secrets and variables →
-   Actions → New repository secret → name `DISCORD_WEBHOOK_URL`, paste the URL.
-3. **Edit [`watches.json`](watches.json)** to list what you want tracked (see its
-   format below), commit, and push.
-4. Done. The [workflow](.github/workflows/pricewatch.yml) runs hourly; trigger it
-   immediately from the repo's **Actions** tab → PriceWatch → **Run workflow**.
+1. **Make a webhook:** Discord channel → Edit Channel → Integrations → Webhooks →
+   New Webhook → Copy URL. Put it in `.env` as `DISCORD_WEBHOOK_URL`.
+2. **Edit [`watches.json`](watches.json)** — a list of items; omit `target_price`
+   to alert on any decrease:
+   ```json
+   [
+     { "source": "url", "identifier": "https://store.example/mac", "label": "Mac mini", "target_price": 899 }
+   ]
+   ```
+3. **Schedule it** with the `launchd` agent in `deploy/`.
 
-`watches.json` is a list of items; omit `target_price` to alert on any decrease:
-
-```json
-[
-  { "source": "url", "identifier": "https://store.example/mac", "label": "Mac mini", "target_price": 899 }
-]
-```
+(The same script runs on GitHub Actions cron too — fine for an `api` source or
+stores that don't block cloud IPs, but B&H-style retailers will `403` there.)
 
 ### Mode B — Always-on bot (slash commands)
 
 Runs [`bot.py`](bot.py) as a persistent process, so `/watch` and friends work.
-It needs to stay running:
-
-- **Your Mac, always on** under `launchd` — see [deploy/README.md](deploy/README.md).
-- **A small cloud host** (Railway / Render Background Worker / Fly.io). These run
-  a persistent worker; mount a volume and point `WATCHLIST_PATH` at it so the
-  watchlist survives restarts. Cheap (~$2–5/mo), not free.
-- **A free cloud VM** (Oracle Cloud / GCP always-free tier) with `systemd`.
+Needs `DISCORD_TOKEN` + `DISCORD_CHANNEL_ID` in `.env`. Run it on your Mac under
+`launchd` ([deploy/README.md](deploy/README.md), Option B), or on a cloud host if
+you only use API-based sources.
 
 ## Extending it
 
@@ -130,9 +131,9 @@ types beyond Macs, nothing special is needed — just `/watch` any SKU or URL.
 | [`sources.py`](sources.py)    | Price sources (`bestbuy`, `url`) + the `resolve()` registry |
 | [`alerts.py`](alerts.py)      | New-low / target-crossing de-dupe logic                 |
 | [`storage.py`](storage.py)    | Atomic `watchlist.json` read/write (Mode B)             |
-| [`check_once.py`](check_once.py) | Serverless one-shot check → Discord webhook (Mode A)  |
+| [`check_once.py`](check_once.py) | One-shot check → Discord webhook (Mode A)             |
 | [`watches.json`](watches.json) | Product list for Mode A (you edit this)                |
-| [`.github/workflows/pricewatch.yml`](.github/workflows/pricewatch.yml) | Hourly cron that runs Mode A |
+| [`deploy/`](deploy)           | `launchd` agents + setup guide for running on a Mac     |
 | [`check_url.py`](check_url.py) | CLI to test whether the scraper can read a price from a URL |
 | [`tests/test_offline.py`](tests/test_offline.py) | Offline checks for parsing + alert logic (no token needed) |
 

@@ -1,6 +1,7 @@
 # Secrets & local state
 .env
 watchlist.json
+state.json
 *.tmp
 *.log
 

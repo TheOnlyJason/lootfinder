@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pricewatch.check</string>
+
+    <!-- Run the one-shot checker with the virtualenv's Python. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jasondai/lootfinder/.venv/bin/python</string>
+        <string>/Users/jasondai/lootfinder/check_once.py</string>
+    </array>
+
+    <!-- check_once.py reads .env, watches.json and state.json from here. -->
+    <key>WorkingDirectory</key>
+    <string>/Users/jasondai/lootfinder</string>
+
+    <!-- Run once at load, then every hour. The script just checks and exits;
+         do NOT use KeepAlive (that would relaunch it in a tight loop). -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Each run's output (prices, alerts, errors) appends here. -->
+    <key>StandardOutPath</key>
+    <string>/Users/jasondai/lootfinder/pricewatch.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jasondai/lootfinder/pricewatch.log</string>
+</dict>
+</plist>
