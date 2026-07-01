@@ -15,12 +15,14 @@ storefront, Apple) detect and block automated scraping aggressively, change
 their HTML constantly, and forbid scraping in their Terms of Service. Scraping
 them directly will be unreliable and is against their rules.
 
-- **Best Buy** publishes a free Products API (developer.bestbuy.com). You query
-  by SKU and get the live price back as clean JSON. This is the robust path for
-  the Mac mini / Mac Studio SKUs and any other Best Buy product. Register for a
-  key, drop it in `.env`, and use `source: bestbuy`. (API access is
-  approval-based and Best Buy has changed its terms over time, so confirm
-  current availability when you sign up.)
+- **Best Buy** publishes a free Products API (developer.bestbuy.com). You get the
+  live price back as clean JSON — no scraping, no 403s. The `bestbuy` source
+  accepts either a numeric Best Buy **SKU** or a **manufacturer model number**
+  (e.g. Apple `MU9E3LL/A`, Canon `3637C001`), so you can track an item without
+  hunting down its SKU. This is the robust path for Macs, cameras, and any other
+  Best Buy product. Register for a key, drop it in `.env` as `BESTBUY_API_KEY`,
+  and use `source: bestbuy`. (API access is approval-based and Best Buy has
+  changed its terms over time, so confirm current availability when you sign up.)
 - **Amazon:** no free price API. The realistic option is the Keepa API (paid) —
   it's built exactly for price-history/drop tracking. Add a `fetch_keepa()`
   function alongside the others in [`sources.py`](sources.py) and register it in

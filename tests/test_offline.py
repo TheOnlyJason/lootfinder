@@ -154,6 +154,24 @@ def test_check_once_prunes_removed_watches():
     assert state == {}
 
 
+def test_bestbuy_sku_detection():
+    # Bare numbers and Best Buy URLs are SKUs; model numbers are not.
+    assert sources._bestbuy_sku("6565581") == "6565581"
+    assert sources._bestbuy_sku("  6565581 ") == "6565581"
+    assert sources._bestbuy_sku("https://www.bestbuy.com/site/x/6565581.p?skuId=6565581") == "6565581"
+    assert sources._bestbuy_sku("MU9E3LL/A") is None
+    assert sources._bestbuy_sku("3637C001") is None
+
+
+def test_bestbuy_result_parsing():
+    ok = sources._bestbuy_result(
+        {"salePrice": 1299.99, "name": "Mac mini", "url": "https://bestbuy.com/x", "onlineAvailability": True}
+    )
+    assert ok.ok and ok.price == 1299.99 and ok.title == "Mac mini" and ok.in_stock is True
+    missing = sources._bestbuy_result({"name": "No price here"})
+    assert not missing.ok and missing.error
+
+
 def _run_all():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in tests:

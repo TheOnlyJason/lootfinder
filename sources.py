@@ -13,9 +13,11 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Iterator, Optional
+from urllib.parse import quote
 
 import aiohttp
 from bs4 import BeautifulSoup
+from yarl import URL
 
 # A real-ish desktop UA. Some sites 403 obvious bots; this is best-effort and
 # does not defeat determined anti-scraping (see README caveats).
@@ -60,49 +62,31 @@ class PriceResult:
 # Best Buy (official Products API)
 # --------------------------------------------------------------------------- #
 
-BESTBUY_ENDPOINT = "https://api.bestbuy.com/v1/products/{sku}.json"
+BESTBUY_SKU_ENDPOINT = "https://api.bestbuy.com/v1/products/{sku}.json"
+BESTBUY_API_ROOT = "https://api.bestbuy.com/v1"
+# Fields we ask Best Buy to return for every product lookup.
+BESTBUY_SHOW = "sku,name,salePrice,regularPrice,onlineAvailability,url"
 
 
-async def fetch_bestbuy(identifier: str) -> PriceResult:
-    """Look up a Best Buy SKU via the official Products API.
+def _bestbuy_sku(identifier: str) -> Optional[str]:
+    """Return a numeric Best Buy SKU if ``identifier`` is (or contains) one.
 
-    Register a free key at developer.bestbuy.com and put it in ``BESTBUY_API_KEY``.
+    A bare number is a SKU; a pasted Best Buy URL has the SKU as its long digit
+    run. Anything else (e.g. an Apple part number like ``MU9E3LL/A``) is *not* a
+    SKU — we resolve those by manufacturer model number instead.
     """
-    api_key = os.getenv("BESTBUY_API_KEY")
-    if not api_key:
-        return PriceResult(ok=False, error="BESTBUY_API_KEY is not set")
+    ident = identifier.strip()
+    if ident.isdigit():
+        return ident
+    if "bestbuy.com" in ident.lower():
+        match = re.search(r"(\d{6,})", ident)
+        if match:
+            return match.group(1)
+    return None
 
-    sku = identifier.strip()
-    if not sku.isdigit():
-        # Be forgiving: pull the SKU out of a pasted Best Buy URL.
-        match = re.search(r"(\d{6,})", sku)
-        if not match:
-            return PriceResult(ok=False, error=f"Not a valid Best Buy SKU: {identifier!r}")
-        sku = match.group(1)
 
-    params = {
-        "apiKey": api_key,
-        "show": "sku,name,salePrice,regularPrice,onlineAvailability,url",
-        "format": "json",
-    }
-    try:
-        async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
-            async with session.get(
-                BESTBUY_ENDPOINT.format(sku=sku),
-                params=params,
-                headers={"User-Agent": USER_AGENT},
-            ) as resp:
-                if resp.status == 403:
-                    return PriceResult(ok=False, error="Best Buy API rejected the key (403)")
-                if resp.status == 404:
-                    return PriceResult(ok=False, error=f"SKU {sku} not found")
-                resp.raise_for_status()
-                data = await resp.json()
-    except asyncio.TimeoutError:
-        return PriceResult(ok=False, error="Best Buy API request timed out")
-    except aiohttp.ClientError as exc:
-        return PriceResult(ok=False, error=f"Network error: {exc}")
-
+def _bestbuy_result(data: dict) -> PriceResult:
+    """Turn a Best Buy product record into a :class:`PriceResult`."""
     price = data.get("salePrice")
     if price is None:
         return PriceResult(ok=False, error="Best Buy returned no salePrice")
@@ -114,6 +98,65 @@ async def fetch_bestbuy(identifier: str) -> PriceResult:
         url=data.get("url"),
         in_stock=data.get("onlineAvailability"),
     )
+
+
+async def _bestbuy_by_sku(session: aiohttp.ClientSession, sku: str, api_key: str) -> PriceResult:
+    params = {"apiKey": api_key, "show": BESTBUY_SHOW, "format": "json"}
+    async with session.get(
+        BESTBUY_SKU_ENDPOINT.format(sku=sku), params=params, headers={"User-Agent": USER_AGENT}
+    ) as resp:
+        if resp.status == 403:
+            return PriceResult(ok=False, error="Best Buy API rejected the key (403)")
+        if resp.status == 404:
+            return PriceResult(ok=False, error=f"SKU {sku} not found")
+        resp.raise_for_status()
+        return _bestbuy_result(await resp.json())
+
+
+async def _bestbuy_by_model(session: aiohttp.ClientSession, model: str, api_key: str) -> PriceResult:
+    """Resolve a manufacturer model number (e.g. ``MU9E3LL/A``) via search.
+
+    The model number can contain ``/`` and other characters, so we encode it and
+    hand aiohttp a pre-encoded URL (``encoded=True``) to keep it from mangling
+    the ``products(...)`` filter.
+    """
+    quoted = quote('"' + model + '"', safe="")
+    url = URL(f"{BESTBUY_API_ROOT}/products(modelNumber={quoted})", encoded=True)
+    params = {"apiKey": api_key, "show": BESTBUY_SHOW, "format": "json", "pageSize": "1"}
+    async with session.get(url, params=params, headers={"User-Agent": USER_AGENT}) as resp:
+        if resp.status == 403:
+            return PriceResult(ok=False, error="Best Buy API rejected the key (403)")
+        resp.raise_for_status()
+        products = (await resp.json()).get("products") or []
+    if not products:
+        return PriceResult(ok=False, error=f"No Best Buy product for model {model!r}")
+    return _bestbuy_result(products[0])
+
+
+async def fetch_bestbuy(identifier: str) -> PriceResult:
+    """Look up a product via the official Best Buy Products API.
+
+    ``identifier`` may be a numeric Best Buy SKU, a pasted Best Buy URL, or a
+    manufacturer model number (e.g. Apple ``MU9E3LL/A``, Canon ``3637C001``) —
+    handy for tracking an item without hunting down its Best Buy SKU.
+
+    Register a free key at developer.bestbuy.com and put it in ``BESTBUY_API_KEY``.
+    """
+    api_key = os.getenv("BESTBUY_API_KEY")
+    if not api_key:
+        return PriceResult(ok=False, error="BESTBUY_API_KEY is not set")
+
+    sku = _bestbuy_sku(identifier)
+    model = identifier.strip()
+    try:
+        async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
+            if sku is not None:
+                return await _bestbuy_by_sku(session, sku, api_key)
+            return await _bestbuy_by_model(session, model, api_key)
+    except asyncio.TimeoutError:
+        return PriceResult(ok=False, error="Best Buy API request timed out")
+    except aiohttp.ClientError as exc:
+        return PriceResult(ok=False, error=f"Network error: {exc}")
 
 
 # --------------------------------------------------------------------------- #
