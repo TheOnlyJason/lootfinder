@@ -107,8 +107,9 @@ Option A.
    ```
 3. **Schedule it** with the `launchd` agent in `deploy/`.
 
-Set `ALWAYS_NOTIFY=true` in `.env` to get a summary of all current prices on
-every run (a heartbeat), instead of only pinging when something drops.
+The checker runs on a schedule (hourly by default) but only posts to Discord
+when an item actually drops to a new low or first crosses its target — quiet
+runs stay silent.
 
 (The same script runs on GitHub Actions cron too — fine for an `api` source or
 stores that don't block cloud IPs, but B&H-style retailers will `403` there.)

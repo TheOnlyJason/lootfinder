@@ -154,19 +154,6 @@ def test_check_once_prunes_removed_watches():
     assert state == {}
 
 
-def test_summary_payload_lists_all_items():
-    R = sources.PriceResult
-    outcomes = [
-        ({"label": "A"}, R(ok=True, price=999.0, currency="USD"), []),
-        ({"label": "B"}, R(ok=True, price=950.0, currency="USD"), ["low"]),
-        ({"label": "C"}, R(ok=False, error="blocked"), []),
-    ]
-    desc = check_once.build_summary_payload(outcomes)["embeds"][0]["description"]
-    assert "A" in desc and "$999.00" in desc      # normal item listed
-    assert "📉" in desc                            # B flagged as a drop
-    assert "blocked" in desc                       # C shows its error
-
-
 def _run_all():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in tests:
